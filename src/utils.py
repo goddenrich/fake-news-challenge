@@ -16,7 +16,12 @@ def load_w2v(w2v_file,w2v_url):
 
     # download pretrained w2v embeddings
     w2v_data=check_dataset(w2v_file,w2v_url,unzip=True,gd=True)
+
     
+    if w2v_data==False:
+        print 'could not load w2v file'
+        return w2v_data
+
     # unzip if necessary
     if (not file_exists(w2v_data[:-3])):
         w2v_data = unzip(w2v_data)
@@ -39,7 +44,8 @@ def unzip(path):
     '''
     unzips a file and returns the filenames of the unzipped items
     '''
-    tar=tarfile.open(data)
+    print path
+    tar=tarfile.open(path)
     file_names = tar.getnames()
     for file_name in file_names:
         tar.extract(file_name,f_name)
@@ -91,7 +97,7 @@ def check_dataset(dataset,url,unzip=False,gd=False):
             print 'then save it within %s as %s' % (new_path,dataset)
             if unzip==True:
                 print 'then unzip the file'
-        
+            data=False
     return data
 
 def load_dataset(data_file,url):
@@ -101,6 +107,10 @@ def load_dataset(data_file,url):
     '''
     # ensure dataset exists
     data_file=check_dataset(data_file,url)
+
+    if data_file==False:
+        print 'there was an error loading the file'
+        return data_file
 
     # load dataset into a panda dataframe
     data = pandas.read_csv(data_file, sep='\t')

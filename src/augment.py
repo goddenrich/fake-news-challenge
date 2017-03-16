@@ -55,6 +55,9 @@ def w2v_augment():
     w2v_url = 'https://drive.google.com/file/d/0B7XkCwpI5KDYNlNUTTlSS21pQmM'
 
     w2v = utils.load_w2v(w2v_file,w2v_url)
+    if w2v==False:
+        print 'failed to load the file'
+        return
 
     sentence = 'this is a test sentence'
     split_sentence=sentence.split()
