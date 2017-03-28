@@ -54,7 +54,7 @@ df_B = pd.merge(df_B, df_A, on='Body ID')
 df_B = df_B.drop(0, axis=1)
 df_ALL = pd.merge(df_S, df_B, on='Body ID')
 
-
+df_ALL.to_csv('training-all.csv')
 
 print 'Total stances: ', df_ALL['Stance ID'].max()
 print 'Total bodies: ', df_ALL['New Body ID'].max()
