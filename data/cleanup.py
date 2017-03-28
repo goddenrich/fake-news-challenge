@@ -29,35 +29,47 @@ import collections as coll
 
 
 
+def data_crossing(df_B,df_S):
+    df_H = coll.Counter(df_S['Headline'])
+    df_H = pd.DataFrame.from_dict(df_H, orient='index').reset_index()
+    df_H['Stance ID'] = df_H.index
+    df_H = df_H.rename(columns={'index': 'Headline'})
+    df_A = coll.Counter(df_B['Body ID'])
+    df_A = pd.DataFrame.from_dict(df_A, orient='index').reset_index()
+    df_A['New Body ID'] = df_A.index
+    df_A = df_A.rename(columns={'index': 'Body ID'})
+    df_S = pd.merge(df_H, df_S, on='Headline')
+    df_S = df_S.drop(0, axis=1)
+    df_B = pd.merge(df_B, df_A, on='Body ID')
+    df_B = df_B.drop(0, axis=1)
+    df_ALL = pd.merge(df_S, df_B, on='Body ID')
+    return df_ALL
+
+
+def data_splitting(per,df_ALL):
+
+    headlines = pd.DataFrame.from_dict(coll.Counter(df_ALL['Stance ID']), orient='index').reset_index()
+    bodies = pd.DataFrame.from_dict(coll.Counter(df_ALL['New Body ID']), orient='index').reset_index()
+
+    # if you want to sample bodies
+    train_H = headlines['index'].sample(int(len(headlines)*per))
+    train_B = bodies['index'].sample(int(len(bodies)*per))
+
+    #training set
+    train = df_ALL[df_ALL['New Body ID'].isin(train_B)]
+    train = train[train['Stance ID'].isin(train_H)]
+
+    #testing set
+    test = df_ALL[~df_ALL['New Body ID'].isin(train_B)]
+    #remove the headlines trained on
+    test = test[~test['Stance ID'].isin(train_H)]
+
+    return train, test
+
 df_B = pd.read_csv('train_bodies.csv')
 df_S = pd.read_csv('train_stances.csv')
-
-
-
-df_H = coll.Counter(df_S['Headline'])
-df_H = pd.DataFrame.from_dict(df_H, orient='index').reset_index()
-df_H['Stance ID'] = df_H.index
-df_H = df_H.rename(columns={'index': 'Headline'})
-
-
-#
-df_A = coll.Counter(df_B['Body ID'])
-df_A = pd.DataFrame.from_dict(df_A, orient='index').reset_index()
-df_A['New Body ID'] = df_A.index
-df_A = df_A.rename(columns={'index': 'Body ID'})
-
-
-
-df_S = pd.merge(df_H, df_S, on='Headline')
-df_S = df_S.drop(0, axis=1)
-df_B = pd.merge(df_B, df_A, on='Body ID')
-df_B = df_B.drop(0, axis=1)
-df_ALL = pd.merge(df_S, df_B, on='Body ID')
-
-
-
-print 'Total stances: ', df_ALL['Stance ID'].max()
-print 'Total bodies: ', df_ALL['New Body ID'].max()
-
-
-df_ALL.sort_values(by='Body ID')
+df_ALL = data_crossing(df_B,df_S)
+df_ALL.to_csv('training-all.csv')
+per = 0.5
+train, test = data_splitting(per,df_ALL)
+print len(train), len(test)
