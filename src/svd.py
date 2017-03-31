@@ -1,14 +1,15 @@
 import numpy as np
 import pandas as pd
 import sklearn
-
+import augment_synonym
 import utils
 from gensim.models.keyedvectors import KeyedVectors
 
 
 def sentence_to_mat(sentence,w2vmodel):
 	temp = []
-	for j in sentence.split(' '):
+	words = augment_synonym.pairwise_tokenize(sentence,w2vmodel,remove_stopwords=True)
+	for j in words:
 		try:
 			temp.append(w2vmodel[j].reshape((300,1)))
 		except KeyError:
