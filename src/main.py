@@ -1,37 +1,31 @@
 import utils
 import augment_synonym
 import numpy as np
+import lstm
 
-def db(msg,deb):
+def sentence_to_mat(sentence,w2vmodel):
+	temp = []
+	words = augment_synonym.pairwise_tokenize(sentence,w2vmodel,remove_stopwords=True)
+	for j in words:
+		try:
+			temp.append(w2vmodel[j].reshape((300,1)))
+		except KeyError:
+			continue
+	temp = np.concatenate(temp, axis=1)
+	return temp
+
+def db(msg, deb):
     if deb:
         print msg
-
-class model_select:
-    def __init__(self,model_type, weights, params):
-        print 'init'
-        self.model_type = model_type
-        self.weights = weights
-        self.params = params
-
-    def train(self, data):
-        print 'train'
-
-    def score(self, data):
-        print 'score'
-        return 1
-
-    def save(self, path):
-        print 'save'
 
 def augment(data, augw2v=False, augSplit=False):
     return data
 
 
-def train(bf='../data/train_bodies.csv', sf='../data/train_stances.csv', model='neural_attention', train_per=0.8, n_folds=10, deb=True):
+def train(params, bf='../data/train_bodies.csv', sf='../data/train_stances.csv', model='neural_attention', train_per=0.8, n_folds=10, deb=True):
 
     model_type='a'
     weights = 'b'
-    hyperparams = [{'a':1}]
 
     # import data and test train split
     bodies, stances = utils.to_df(bf, sf)
@@ -52,8 +46,12 @@ def train(bf='../data/train_bodies.csv', sf='../data/train_stances.csv', model='
             db('\nsplit n: %d' % (cvn+1), deb)
             train_cv, val_cv = utils.data_splitting(train_aug,(n_folds-1)/float(n_folds))
             db('n cv train: %d, n val: %d' % (len(train_cv),len(val_cv)) , deb)
+            db('params:',deb)
+            db(params,deb)
+            model = lstm.lstm(params)
+            if weights:
+                model.load(weights)
 
-            model = model_select(model_type, weights, params)
             model.train(train_cv)
 
             score += model.score(train_cv)/float(n_folds)
@@ -61,12 +59,19 @@ def train(bf='../data/train_bodies.csv', sf='../data/train_stances.csv', model='
         scores.append(score)
     
     best_params = hyperparams[np.argmin(scores)]
-    model = model_select(model_type,weights,best_params)
+    db('\nchosen params:',deb)
+    db(best_params,deb)
+    model = lstm.lstm(best_params)
     model.train(train)
     print 'chosen model score: %d' %model.score(test)
     model.save('/trained/model')
 
-
+def classify(data='', model='', params='', weights=''):
+    model = lstm.lstm(params)
+    model.load(weights)
+    model.conf_mat(data)
 
 if __name__ == "__main__":
-    train()
+    hyperparams = [{'learning_rate':1,'dropout':0.2,'l2Reg':0.1}]
+    train(params=hyperparams)
+    classify(params=hyperparams[0])
