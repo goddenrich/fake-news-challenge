@@ -72,4 +72,6 @@ df_ALL = data_crossing(df_B,df_S)
 df_ALL.to_csv('training-all.csv')
 per = 0.5
 train, test = data_splitting(per,df_ALL)
+
+train.to_csv('train_split.csv')
 print len(train), len(test)

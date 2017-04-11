@@ -7,6 +7,7 @@ import pandas
 import numpy as np
 import tarfile
 from gensim.models.keyedvectors import KeyedVectors
+import collections as coll
 
 def load_w2v(w2v_file,w2v_url):
     '''
@@ -163,5 +164,47 @@ def one_hot_labels(data):
         y_one_hot = np.eye(3)[y_num]
         col.append(y_one_hot)
     return col
+
+def data_crossing(df_B,df_S):
+    df_H = coll.Counter(df_S['Headline'])
+    df_H = pandas.DataFrame.from_dict(df_H, orient='index').reset_index()
+    df_H['Stance ID'] = df_H.index
+    df_H = df_H.rename(columns={'index': 'Headline'})
+    df_A = coll.Counter(df_B['Body ID'])
+    df_A = pandas.DataFrame.from_dict(df_A, orient='index').reset_index()
+    df_A['New Body ID'] = df_A.index
+    df_A = df_A.rename(columns={'index': 'Body ID'})
+    df_S = pandas.merge(df_H, df_S, on='Headline')
+    df_S = df_S.drop(0, axis=1)
+    df_B = pandas.merge(df_B, df_A, on='Body ID')
+    df_B = df_B.drop(0, axis=1)
+    df_ALL = pandas.merge(df_S, df_B, on='Body ID')
+    return df_ALL
+
+def data_splitting(df_ALL, per = 0.5):
+
+
+    headlines = pandas.DataFrame.from_dict(coll.Counter(df_ALL['Stance ID']), orient='index').reset_index()
+    bodies = pandas.DataFrame.from_dict(coll.Counter(df_ALL['New Body ID']), orient='index').reset_index()
+
+    # if you want to sample bodies
+    train_H = headlines['index'].sample(int(len(headlines)*per))
+    train_B = bodies['index'].sample(int(len(bodies)*per))
+
+    #training set
+    train = df_ALL[df_ALL['New Body ID'].isin(train_B)]
+    train = train[train['Stance ID'].isin(train_H)]
+
+    #testing set
+    test = df_ALL[~df_ALL['New Body ID'].isin(train_B)]
+    #remove the headlines trained on
+    test = test[~test['Stance ID'].isin(train_H)]
+
+    return train, test
+
+def to_df(bodies='../data/train_bodies.csv', stances='../data/train_stances.csv'):
+    df_B = pandas.read_csv(bodies)
+    df_S = pandas.read_csv(stances)
+    return df_B, df_S
 
 
