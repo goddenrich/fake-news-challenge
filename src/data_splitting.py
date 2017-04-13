@@ -1,8 +1,4 @@
-'''
-Run the file this way:
-python data_crossing.py train_bodies.csv train_stances.csv
 
-'''
 from __future__ import division
 import pandas as pd
 import collections as coll
@@ -10,7 +6,7 @@ import sys
 import argparse
 
 
-def even_split(df_A, per=0.5, max_tries = 10, diff=0.03, train_file= None, test_file = None):
+def even_split(df_A, per=0.5, max_tries = 10, diff=0.03, train_file= None, test_file = None, sfo=False):
     even=False
     tries=0
 
@@ -30,21 +26,26 @@ def even_split(df_A, per=0.5, max_tries = 10, diff=0.03, train_file= None, test_
         print 'Training:', getper(df_train)
     
     if train_file is not None:
-        df_train.to_csv(train_file)
+        save_dataframe(df_train, train_file, sfo)
 
     if test_file is not None:
-        df_test.to_csv(test_file)
+        save_dataframe(df_test, test_file, sfo)
 
     return df_train, df_test
 
+def save_dataframe(df, save_file, sfo=False):
+    if not sfo:
+        df.to_csv(save_file)
+    else:
+        df.to_csv(save_file, columns=['Headline', 'Body ID', 'Stance'], index=False)
 
-def import_data(B,S,all_save):
+def import_data(B, S, all_save = None):
     df_B = pd.read_csv(B)
     df_S = pd.read_csv(S)
-    df_ALL = data_crossing(df_B,df_S,all_save)
+    df_ALL = data_crossing(df_B, df_S, all_save)
     return df_ALL
     
-def data_crossing(df_B,df_S,df_all_save='training-all.csv'):
+def data_crossing(df_B, df_S, df_all_save= None):
     df_H = coll.Counter(df_S['Headline'])
     df_H = pd.DataFrame.from_dict(df_H, orient='index').reset_index()
     df_H['Stance ID'] = df_H.index
@@ -112,8 +113,9 @@ if __name__=='__main__':
     parser.add_argument('--save_train', type=str)
     parser.add_argument('--save_test', type=str)
     parser.add_argument('--max_tries', default=10, type=int)
+    parser.add_argument('--save_format_original', action='store_true')
     
     args = parser.parse_args(sys.argv[1:])
 
     df_ALL = import_data(args.bodies, args.stances, args.save_all)
-    even_split(df_ALL, args.split_per, args.max_tries, args.diff, args.save_train, args.save_test)
+    even_split(df_ALL, args.split_per, args.max_tries, args.diff, args.save_train, args.save_test, args.save_format_original)
