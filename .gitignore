@@ -1,2 +1,4 @@
-data/
 *.pyc
+.ipynb_checkpoints/
+*.csv
+/src/data
