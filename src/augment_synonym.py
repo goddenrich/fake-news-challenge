@@ -227,4 +227,4 @@ def run_test(training_filename):
 
 
 if __name__ == "__main__":
-    run_test("../data/train_split.csv")
+    run_test("../dataset/train_split.csv")
