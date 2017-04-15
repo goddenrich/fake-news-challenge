@@ -23,7 +23,7 @@ def augment(data, augw2v=False, augSplit=False):
     return data
 
 
-def train(params, bf='../data/train_bodies.csv', sf='../data/train_stances.csv', model='neural_attention', train_per=0.8, n_folds=10, deb=True):
+def train(params, bf='../dataset/train_bodies.csv', sf='../dataset/train_stances.csv', model='neural_attention', train_per=0.8, n_folds=10, deb=True):
 
     model_type='a'
     weights = 'b'

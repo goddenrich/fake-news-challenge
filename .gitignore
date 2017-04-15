@@ -2,3 +2,6 @@ data/
 src/nn_snapshots/*
 src/visual_logs/*
 *.pyc
+.ipynb_checkpoints/
+*.csv
+/src/data

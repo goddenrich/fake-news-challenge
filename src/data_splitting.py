@@ -104,17 +104,23 @@ def check_splitting(diff,df_ALL,train,test):
     return True
 
 if __name__=='__main__':
+    '''
+    python data_splitting.py --bodies '../dataset/train_bodies.csv' --stances '../dataset/train_stances.csv' --save_all 'all.csv' --save_train 'train.csv' --save_test 'test.csv' --save_format_original
+    '''
+
     parser = argparse.ArgumentParser()
-    parser.add_argument('--bodies', required=True, type=str)
-    parser.add_argument('--stances', required=True, type=str)
-    parser.add_argument('--split_per', default=0.2, type=float)
-    parser.add_argument('--diff', default=0.03, type=float)
-    parser.add_argument('--save_all', type=str)
-    parser.add_argument('--save_train', type=str)
-    parser.add_argument('--save_test', type=str)
-    parser.add_argument('--max_tries', default=10, type=int)
-    parser.add_argument('--save_format_original', action='store_true')
+    parser.add_argument('--bodies', required=True, type=str, help='specify the location of the training bodies file')
+    parser.add_argument('--stances', required=True, type=str, help='specify the location of the training stances file')
+    parser.add_argument('--split_per', default=0.2, type=float, help='specify the percentage for the test set')
+    parser.add_argument('--diff', default=0.03, type=float, help='max ratio difference between the original stratification... eg 0.03 and 75%% original split -> 78%% or 72%%')
+    parser.add_argument('--save_all', type=str, help='specify the file to save the joined bodies and stances table')
+    parser.add_argument('--save_train', type=str, help='specify the file to save the training set')
+    parser.add_argument('--save_test', type=str, help='specify the file to save the test set')
+    parser.add_argument('--max_tries', default=10, type=int, help='how many times to try the split to get the tolerated ratio difference')
+    parser.add_argument('--save_format_original', action='store_true', help='use flag to save the train and test set in original format')
     
+    if len(sys.argv) == 1:
+        parser.print_help()
     args = parser.parse_args(sys.argv[1:])
 
     df_ALL = import_data(args.bodies, args.stances, args.save_all)
