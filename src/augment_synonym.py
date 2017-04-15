@@ -222,8 +222,8 @@ def run_test(training_filename):
 
     data = pd.read_csv(training_filename)
     print "generating headlines"
-    augmented_temp = augment_headlines(data,w2v,"temp.txt")
-    new_data = pd.read_csv("temp.txt",sep="|")
+    augmented_temp = augment_headlines(data,w2v,"augmented_headlines.txt")
+    new_data = pd.read_csv("augmented_headlines.txt",sep="|")
 
 
 if __name__ == "__main__":

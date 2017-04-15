@@ -1,2 +1,4 @@
 data/
+src/nn_snapshots/*
+src/visual_logs/*
 *.pyc
