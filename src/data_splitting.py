@@ -46,9 +46,6 @@ def even_split(df_A, per=0.8, valper=0.8, max_tries = 10, diff=0.03, train_file=
         print 'validation:', getper(df_val)
         print 'Training:', getper(df_train)
 
-    df_train = explode_data(df_train)
-    df_test = explode_data(df_test)
-    df_val = explode_data(df_val)
 
     if train_file is not None:
         save_dataframe(df_train, train_file, sfo)
@@ -107,11 +104,13 @@ def import_data(B, S, w2v, all_save = None):
     df_S = pd.read_csv(S)
     df_B, df_S = oneoff_cleanup(df_B, df_S, True)
     df_B['articleBody'] = df_B['articleBody'].apply(window_split,w2v)
+    df_B_expl = explode_data(df_B,['Body ID'])
+    save_dataframe(df_B_expl,'bodies_expl.csv',sfo=False)
     df_ALL = data_crossing(df_B, df_S, all_save)
     return df_ALL
 
-def explode_data(df):
-    df_expl =  df.groupby(['Headline','Stance ID','Body ID','Stance','New Body ID']).articleBody.apply(lambda x: pd.DataFrame(x.values[0])).reset_index().drop('level_5', axis = 1)
+def explode_data(df,headers,level='level_1'):
+    df_expl =  df.groupby(headers).articleBody.apply(lambda x: pd.DataFrame(x.values[0])).reset_index().drop(level, axis = 1)
     df_expl['articleBody'] = df_expl[0]
     return df_expl
 
@@ -198,6 +197,8 @@ if __name__=='__main__':
     w2v_url = 'https://drive.google.com/file/d/0B7XkCwpI5KDYNlNUTTlSS21pQmM'
 
     w2v = utils.load_w2v(w2v_file,w2v_url)
+
+
 
     if len(sys.argv) == 1:
         parser.print_help()
