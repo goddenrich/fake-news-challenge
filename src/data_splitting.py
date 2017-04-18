@@ -24,7 +24,7 @@ def even_split(df_A, per=0.5, max_tries = 10, diff=0.03, train_file= None, test_
         print 'try different per'
         print 'Testing:', getper(df_test)
         print 'Training:', getper(df_train)
-    
+
     if train_file is not None:
         save_dataframe(df_train, train_file, sfo)
 
@@ -39,12 +39,49 @@ def save_dataframe(df, save_file, sfo=False):
     else:
         df.to_csv(save_file, columns=['Headline', 'Body ID', 'Stance'], index=False)
 
+def oneoff_cleanup(df_B, df_S,cleanup=False,excl_stances=[],excl_bodies=[624,1686,2515]):
+    '''
+    Call: has to run after import before crossing
+    inputs: cleanup flag, runs if True, bodies and stances, dict of IDs to remove before crossing
+    Stances not being excluded at this moment
+    ouput: pandas df to send to crossing
+    '''
+    if cleanup==False:
+        return df_B, df_S
+    else:
+        if excl_bodies:
+            mask = df_B['Body ID'].isin(excl_bodies)
+            df_B = df_B[~mask]
+            mask = df_S['Body ID'].isin(excl_bodies)
+            df_S = df_S[~mask]
+    return df_B, df_S
+
+def window_split(s,size=150,window=75):
+    '''
+    Has to be run before data crossing - will explode rows later on after crossed
+    input: sentence
+    call: run tokenization and split into chunks, join again
+    output: sliding window of chunks which are stings, default size=150, default window=75
+    MISSING: integrate the tokenization from w2v here
+    '''
+
+    s = str.split(s) #call the tokenize function here
+    if len(s)<size:
+        return [" ".join(s)]
+    chunks = [[" ".join(s[i:i+size])] for i in xrange(0,len(s)-window,window)]
+    return chunks
+
 def import_data(B, S, all_save = None):
     df_B = pd.read_csv(B)
     df_S = pd.read_csv(S)
+    df_B, df_S = oneoff_cleanup(df_B, df_S, True)
+    df_B['articleBody'] = df_B['articleBody'].apply(window_split)
     df_ALL = data_crossing(df_B, df_S, all_save)
     return df_ALL
-    
+
+def explode_data(df_ALL):
+    return  df_ALL.groupby(['Headline','Stance ID','Body ID','Stance','New Body ID']).articleBody.apply(lambda x: pd.DataFrame(x.values[0])).reset_index().drop('level_5', axis = 1)
+
 def data_crossing(df_B, df_S, df_all_save= None):
     df_H = coll.Counter(df_S['Headline'])
     df_H = pd.DataFrame.from_dict(df_H, orient='index').reset_index()
@@ -59,7 +96,9 @@ def data_crossing(df_B, df_S, df_all_save= None):
     df_B = pd.merge(df_B, df_A, on='Body ID')
     df_B = df_B.drop(0, axis=1)
     df_ALL = pd.merge(df_S, df_B, on='Body ID')
-    
+
+    explode_data(df_ALL)
+
     if df_all_save is not None:
         df_ALL.to_csv(df_all_save)
 
@@ -118,7 +157,7 @@ if __name__=='__main__':
     parser.add_argument('--save_test', type=str, help='specify the file to save the test set')
     parser.add_argument('--max_tries', default=10, type=int, help='how many times to try the split to get the tolerated ratio difference')
     parser.add_argument('--save_format_original', action='store_true', help='use flag to save the train and test set in original format')
-    
+
     if len(sys.argv) == 1:
         parser.print_help()
     args = parser.parse_args(sys.argv[1:])
