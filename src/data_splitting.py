@@ -32,6 +32,9 @@ def even_split(df_A, per=0.5, max_tries = 10, diff=0.03, train_file= None, test_
     if test_file is not None:
         save_dataframe(df_test, test_file, sfo)
 
+    df_train = explode_data(df_train)
+    df_test = explode_data(df_test)
+
     return df_train, df_test
 
 def save_dataframe(df, save_file, sfo=False):
@@ -80,8 +83,8 @@ def import_data(B, S, w2v, all_save = None):
     df_ALL = data_crossing(df_B, df_S, all_save)
     return df_ALL
 
-def explode_data(df_ALL):
-    return  df_ALL.groupby(['Headline','Stance ID','Body ID','Stance','New Body ID']).articleBody.apply(lambda x: pd.DataFrame(x.values[0])).reset_index().drop('level_5', axis = 1)
+def explode_data(df):
+    return  df.groupby(['Headline','Stance ID','Body ID','Stance','New Body ID']).articleBody.apply(lambda x: pd.DataFrame(x.values[0])).reset_index().drop('level_5', axis = 1)
 
 def data_crossing(df_B, df_S, df_all_save= None):
     df_H = coll.Counter(df_S['Headline'])
@@ -98,8 +101,8 @@ def data_crossing(df_B, df_S, df_all_save= None):
     df_B = df_B.drop(0, axis=1)
     df_ALL = pd.merge(df_S, df_B, on='Body ID')
 
-    df_ALL = explode_data(df_ALL)
-    df_ALL['articleBody'] = df_ALL[0]
+    #df_ALL = explode_data(df_ALL)
+    #df_ALL['articleBody'] = df_ALL[0]
 
     if df_all_save is not None:
         df_ALL.to_csv(df_all_save)
