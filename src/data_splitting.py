@@ -101,8 +101,6 @@ def data_crossing(df_B, df_S, df_all_save= None):
     df_B = df_B.drop(0, axis=1)
     df_ALL = pd.merge(df_S, df_B, on='Body ID')
 
-    #df_ALL = explode_data(df_ALL)
-    #df_ALL['articleBody'] = df_ALL[0]
 
     if df_all_save is not None:
         df_ALL.to_csv(df_all_save)
@@ -157,7 +155,7 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--bodies', required=True, type=str, help='specify the location of the training bodies file')
     parser.add_argument('--stances', required=True, type=str, help='specify the location of the training stances file')
-    parser.add_argument('--split_per', default=0.2, type=float, help='specify the percentage for the test set')
+    parser.add_argument('--split_per', default=0.8, type=float, help='specify the percentage for the train set')
     parser.add_argument('--diff', default=0.03, type=float, help='max ratio difference between the original stratification... eg 0.03 and 75%% original split -> 78%% or 72%%')
     parser.add_argument('--save_all', type=str, help='specify the file to save the joined bodies and stances table')
     parser.add_argument('--save_train', type=str, help='specify the file to save the training set')
