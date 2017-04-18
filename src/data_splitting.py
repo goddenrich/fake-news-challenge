@@ -132,12 +132,14 @@ def getper(data):
     return percentages
 
 def check_splitting(diff,df_ALL,train,test):
-    #at the moment only verifies that all stances are present
+    '''
+    now checks for relative per difference rather than absolute difference
+    '''
     for i in getper(df_ALL).keys():
-        if abs(getper(train)[i]-getper(df_ALL)[i])>diff:
+        if abs(getper(train)[i]-getper(df_ALL)[i]/getper(train)[i])>diff:
             print 'training split for', i, 'too low'
             return False
-        if abs(getper(test)[i]-getper(df_ALL)[i])>diff:
+        if abs(getper(test)[i]-getper(df_ALL)[i]/getper(test)[i])>diff:
             print 'testing split for', i, 'too low'
             return False
     return True
