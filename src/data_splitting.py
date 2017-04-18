@@ -5,9 +5,10 @@ import collections as coll
 import sys
 import argparse
 import augment_synonym
+import utils
 
 
-def even_split(df_A, per=0.5, max_tries = 10, diff=0.03, train_file= None, test_file = None, sfo=False):
+def even_split(df_A, per=0.8, valper=0.8, max_tries = 10, diff=0.03, train_file= None, test_file = None, val_file = None, sfo=False):
     even=False
     tries=0
 
@@ -18,13 +19,36 @@ def even_split(df_A, per=0.5, max_tries = 10, diff=0.03, train_file= None, test_
 
     if even:
         print 'Whole set:', getper(df_ALL)
-        print 'Testing:', len(df_train), getper(df_train)
-        print 'Training:', len(df_test),getper(df_test)
+        print 'Testing:', len(df_test), getper(df_test)
+        print 'Training:', len(df_train),getper(df_train)
     else:
         print 'Warning: your split percentage does not have all stances in test and training'
         print 'try different per'
         print 'Testing:', getper(df_test)
         print 'Training:', getper(df_train)
+
+
+    even=False
+    tries=0
+    #split again to obtain cross validation file
+    while not even and tries < max_tries:
+        df_train, df_val = data_splitting(valper, df_train)
+        even = check_splitting(diff, df_A, df_train, df_val)
+        tries += 1
+
+    if even:
+        print 'Whole set:', getper(df_ALL)
+        print 'validation:', len(df_val),getper(df_val)
+        print 'Training:', len(df_train), getper(df_train)
+    else:
+        print 'Warning: your split percentage does not have all stances in validation and training'
+        print 'try different per'
+        print 'validation:', getper(df_val)
+        print 'Training:', getper(df_train)
+
+    df_train = explode_data(df_train)
+    df_test = explode_data(df_test)
+    df_val = explode_data(df_val)
 
     if train_file is not None:
         save_dataframe(df_train, train_file, sfo)
@@ -32,16 +56,19 @@ def even_split(df_A, per=0.5, max_tries = 10, diff=0.03, train_file= None, test_
     if test_file is not None:
         save_dataframe(df_test, test_file, sfo)
 
-    df_train = explode_data(df_train)
-    df_test = explode_data(df_test)
+    if val_file is not None:
+        save_dataframe(df_val, val_file, sfo)
 
-    return df_train, df_test
+
+
+    return df_train, df_test, df_val
 
 def save_dataframe(df, save_file, sfo=False):
     if not sfo:
         df.to_csv(save_file)
     else:
         df.to_csv(save_file, columns=['Headline', 'Body ID', 'Stance'], index=False)
+
 
 def oneoff_cleanup(df_B, df_S,cleanup=False,excl_stances=[],excl_bodies=[624,1686,2515]):
     '''
@@ -84,7 +111,9 @@ def import_data(B, S, w2v, all_save = None):
     return df_ALL
 
 def explode_data(df):
-    return  df.groupby(['Headline','Stance ID','Body ID','Stance','New Body ID']).articleBody.apply(lambda x: pd.DataFrame(x.values[0])).reset_index().drop('level_5', axis = 1)
+    df_expl =  df.groupby(['Headline','Stance ID','Body ID','Stance','New Body ID']).articleBody.apply(lambda x: pd.DataFrame(x.values[0])).reset_index().drop('level_5', axis = 1)
+    df_expl['articleBody'] = df_expl[0]
+    return df_expl
 
 def data_crossing(df_B, df_S, df_all_save= None):
     df_H = coll.Counter(df_S['Headline'])
@@ -139,27 +168,29 @@ def check_splitting(diff,df_ALL,train,test):
     now checks for relative per difference rather than absolute difference
     '''
     for i in getper(df_ALL).keys():
-        if abs(getper(train)[i]-getper(df_ALL)[i]/getper(train)[i])>diff:
+        if abs((getper(train)[i]-getper(df_ALL)[i])/getper(df_ALL)[i])>diff:
             print 'training split for', i, 'too low'
             return False
-        if abs(getper(test)[i]-getper(df_ALL)[i]/getper(test)[i])>diff:
-            print 'testing split for', i, 'too low'
+        if abs((getper(test)[i]-getper(df_ALL)[i])/getper(df_ALL)[i])>diff:
+            print 'testing/validation split for', i, 'too low'
             return False
     return True
 
 if __name__=='__main__':
     '''
-    python data_splitting.py --bodies '../dataset/train_bodies.csv' --stances '../dataset/train_stances.csv' --save_all 'all.csv' --save_train 'train.csv' --save_test 'test.csv' --save_format_original
+    python data_splitting.py --bodies '../dataset/train_bodies.csv' --stances '../dataset/train_stances.csv' --save_all 'all.csv' --save_train 'train.csv' --save_test 'test.csv' --save_val 'validation.csv'  --save_format_original
     '''
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--bodies', required=True, type=str, help='specify the location of the training bodies file')
     parser.add_argument('--stances', required=True, type=str, help='specify the location of the training stances file')
     parser.add_argument('--split_per', default=0.8, type=float, help='specify the percentage for the train set')
+    parser.add_argument('--val_per', default=0.8, type=float, help='specify the percentage for the validation set')
     parser.add_argument('--diff', default=0.03, type=float, help='max ratio difference between the original stratification... eg 0.03 and 75%% original split -> 78%% or 72%%')
     parser.add_argument('--save_all', type=str, help='specify the file to save the joined bodies and stances table')
     parser.add_argument('--save_train', type=str, help='specify the file to save the training set')
     parser.add_argument('--save_test', type=str, help='specify the file to save the test set')
+    parser.add_argument('--save_val', type=str, help='specify the file to save the validation set')
     parser.add_argument('--max_tries', default=10, type=int, help='how many times to try the split to get the tolerated ratio difference')
     parser.add_argument('--save_format_original', action='store_true', help='use flag to save the train and test set in original format')
 
@@ -173,4 +204,4 @@ if __name__=='__main__':
     args = parser.parse_args(sys.argv[1:])
 
     df_ALL = import_data(args.bodies, args.stances, w2v, args.save_all)
-    even_split(df_ALL, args.split_per, args.max_tries, args.diff, args.save_train, args.save_test, args.save_format_original)
+    even_split(df_ALL, args.split_per, args.val_per, args.max_tries, args.diff, args.save_train, args.save_test, args.save_val, args.save_format_original)
