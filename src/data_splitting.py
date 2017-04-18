@@ -4,6 +4,7 @@ import pandas as pd
 import collections as coll
 import sys
 import argparse
+import augment_synonym
 
 
 def even_split(df_A, per=0.5, max_tries = 10, diff=0.03, train_file= None, test_file = None, sfo=False):
@@ -64,18 +65,18 @@ def window_split(s,size=150,window=75):
     output: sliding window of chunks which are stings, default size=150, default window=75
     MISSING: integrate the tokenization from w2v here
     '''
-
-    s = str.split(s) #call the tokenize function here
+    s = pairwise_tokenize(s,w2v,remove_stopwords=True)
+    #s = str.split(s) #call the tokenize function here
     if len(s)<size:
         return [" ".join(s)]
     chunks = [[" ".join(s[i:i+size])] for i in xrange(0,len(s)-window,window)]
     return chunks
 
-def import_data(B, S, all_save = None):
+def import_data(B, S, w2v, all_save = None):
     df_B = pd.read_csv(B)
     df_S = pd.read_csv(S)
     df_B, df_S = oneoff_cleanup(df_B, df_S, True)
-    df_B['articleBody'] = df_B['articleBody'].apply(window_split)
+    df_B['articleBody'] = df_B['articleBody'].apply(window_split,w2v)
     df_ALL = data_crossing(df_B, df_S, all_save)
     return df_ALL
 
@@ -160,9 +161,14 @@ if __name__=='__main__':
     parser.add_argument('--max_tries', default=10, type=int, help='how many times to try the split to get the tolerated ratio difference')
     parser.add_argument('--save_format_original', action='store_true', help='use flag to save the train and test set in original format')
 
+    w2v_file = 'GoogleNews-vectors-negative300.bin.gz'
+    w2v_url = 'https://drive.google.com/file/d/0B7XkCwpI5KDYNlNUTTlSS21pQmM'
+
+    w2v = utils.load_w2v(w2v_file,w2v_url)
+
     if len(sys.argv) == 1:
         parser.print_help()
     args = parser.parse_args(sys.argv[1:])
 
-    df_ALL = import_data(args.bodies, args.stances, args.save_all)
+    df_ALL = import_data(args.bodies, args.stances, w2v, args.save_all)
     even_split(df_ALL, args.split_per, args.max_tries, args.diff, args.save_train, args.save_test, args.save_format_original)
