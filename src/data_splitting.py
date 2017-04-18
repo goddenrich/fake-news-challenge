@@ -99,6 +99,7 @@ def data_crossing(df_B, df_S, df_all_save= None):
     df_ALL = pd.merge(df_S, df_B, on='Body ID')
 
     df_ALL = explode_data(df_ALL)
+    df_ALL['articleBody'] = df_ALL[0]
 
     if df_all_save is not None:
         df_ALL.to_csv(df_all_save)
