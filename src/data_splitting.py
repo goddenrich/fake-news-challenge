@@ -69,7 +69,7 @@ def window_split(s,size=150,window=75):
     #s = str.split(s) #call the tokenize function here
     if len(s)<size:
         return [" ".join(s)]
-    chunks = [[" ".join(s[i:i+size])] for i in xrange(0,len(s)-window,window)]
+    chunks = [[" ".join(s   [i:i+size])] for i in xrange(0,len(s)-window,window)]
     return chunks
 
 def import_data(B, S, w2v, all_save = None):
@@ -98,7 +98,7 @@ def data_crossing(df_B, df_S, df_all_save= None):
     df_B = df_B.drop(0, axis=1)
     df_ALL = pd.merge(df_S, df_B, on='Body ID')
 
-    explode_data(df_ALL)
+    df_ALL = explode_data(df_ALL)
 
     if df_all_save is not None:
         df_ALL.to_csv(df_all_save)
