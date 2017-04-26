@@ -68,7 +68,7 @@ def get_batch(data_filename,indices,batch_size,headline_truncate_len,body_trunca
 
         label = one_hot_encode(raw_label)
         batch_labels.append(label)
-        batch_ids.append((stance_id,body_id))
+        batch_ids.append(str(stance_id) +"_" + str(body_id))
 
     batch_headlines = np.array(batch_headlines).astype(np.float32)
     batch_bodies = np.array(batch_bodies).astype(np.float32)

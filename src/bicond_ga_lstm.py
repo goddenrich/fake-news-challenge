@@ -64,7 +64,7 @@ class bicond_ga_lstm(object):
                 h_bkwd_cell_1 = tf.contrib.rnn.LSTMCell(self.lstm_units,forget_bias = 1.0)
 
                 h_bidi_outputs,h_final_hidden_state,_ = tf.contrib.rnn.static_bidirectional_rnn(h_fwd_cell_1,h_bkwd_cell_1, h_inputs, 
-                       initial_state_fw=None, initial_state_bw=None, dtype=tf.float32)
+                       initial_state_fw=None, initial_state_bw=None, dtype=tf.float32,sequence_length=self.head_len_placeholder)
 
             with tf.variable_scope('Body_BIRNN',initializer = tf.contrib.layers.xavier_initializer()):
 
@@ -72,7 +72,7 @@ class bicond_ga_lstm(object):
                 b_bkwd_cell_1 = tf.contrib.rnn.LSTMCell(self.lstm_units,forget_bias = 1.0)
 
                 b_bidi_outputs,_,_ = tf.contrib.rnn.static_bidirectional_rnn(b_fwd_cell_1,b_bkwd_cell_1, b_inputs, 
-                       initial_state_fw=h_final_hidden_state, initial_state_bw=None, dtype=tf.float32)
+                       initial_state_fw=h_final_hidden_state, initial_state_bw=None, dtype=tf.float32,sequence_length=self.body_len_placeholder)
 
                 #Global Attention
                 Wy = tf.get_variable('Wy',[self.lstm_units*2,self.lstm_units*2],initializer=tf.truncated_normal_initializer())
@@ -89,9 +89,20 @@ class bicond_ga_lstm(object):
                 block_Wp = tf.multiply(Wp,tf.constant(1.0,shape=[self.batch_size,self.lstm_units*2,self.lstm_units*2]))
                 block_Wx = tf.multiply(Wx,tf.constant(1.0,shape=[self.batch_size,self.lstm_units*2,self.lstm_units*2]))
                 block_Wa = tf.multiply(Wa,tf.constant(1.0,shape=[self.batch_size,1,self.lstm_units*2]))
+
+                # Adapted from: https://github.com/aymericdamien/TensorFlow-Examples/blob/master/examples/3_NeuralNetworks/dynamic_rnn.py
+                body_outputs = tf.stack(b_bidi_outputs)
+                body_outputs = tf.transpose(body_outputs, [1, 0, 2])
+
+                # Hack to build the indexing and retrieve the right output.
+                # Start indices for each sample
+                index = tf.range(0, self.batch_size) * self.body_truncate_len + (self.body_len_placeholder - 1)
+                # Indexing
+                body_outputs = tf.gather(tf.reshape(body_outputs, [-1, self.lstm_units*2]), index)
+                
                 #repeat-stack column-wise HN
                 e = tf.constant(1.0,shape=[self.headline_truncate_len,self.batch_size,self.lstm_units*2])
-                block_HN = tf.transpose(tf.multiply(b_bidi_outputs[-1],e),[1,2,0]) #(batchsize,lstm*2,length)
+                block_HN = tf.transpose(tf.multiply(body_outputs,e),[1,2,0]) #(batchsize,lstm*2,length)
 
                 block_Y = tf.transpose(h_bidi_outputs,[1,2,0])
                 M_p1 = tf.matmul(block_Wy,block_Y)
@@ -120,7 +131,13 @@ class bicond_ga_lstm(object):
         
 
     def add_training(self):
-        return tf.train.AdamOptimizer(self.learning_rate).minimize(self.loss)
+        optimizer = tf.train.AdamOptimizer(self.learning_rate)
+        grads = optimizer.compute_gradients(self.loss)
+
+        clipped_grads = [(tf.clip_by_value(grad,-1,1),var) for grad,var in grads]
+        train_step = optimizer.apply_gradients(clipped_grads)
+        return train_step
+
 
     def evaluate(self,output):
         eval_correct = tf.nn.in_top_k(output, self.label_placeholder, 1)
@@ -133,7 +150,11 @@ class bicond_ga_lstm(object):
 
     def train(self,train_filename,valid_filename,test_filename,num_epochs,sess,run_test=False):
         for epoch in xrange(num_epochs):
-            train_loss,acc = self.run_epoch(train_filename,True,sess,verbose=True)
+            train_loss,acc,all_ids,predicted_labels,true_labels = self.run_epoch(train_filename,True,sess,verbose=True)
+            # np.save('all_ids'+str(epoch),all_ids)
+            # np.save('predicted_labels'+str(epoch),all_ids)
+            # np.save('true_labels'+str(epoch),all_ids)
+
             if run_test:
                 valid_loss,valid_acc = self.pred(sess,valid_filename)
                 print "=========== epoch = " + str(epoch) + "=============="
@@ -151,9 +172,18 @@ class bicond_ga_lstm(object):
         total_count = 0
         acc = 0.0
         indices = []
+
+        all_ids = np.empty(data_len,dtype=object)
+        true_labels = np.zeros(data_len)
+        predicted_labels = np.zeros(data_len)
+
         for index in xrange(int(num_batches)):
             start_time = time.time()
-            loss,true_count,indices,summaries = self.run_batch(data_filename,indices,isTraining,session)
+            loss,true_count,indices,summaries,logits,batch_ids,batch_true_labels = self.run_batch(data_filename,indices,isTraining,session)
+            batch_predicted_labels = np.argmax(logits,axis=1)
+            predicted_labels[index*self.batch_size:(index+1)*self.batch_size] = batch_predicted_labels
+            true_labels[index*self.batch_size:(index+1)*self.batch_size] = batch_true_labels
+            all_ids[index*self.batch_size:(index+1)*self.batch_size] = batch_ids
             dur = time.time() - start_time
 
             self.iterations += 1
@@ -162,7 +192,10 @@ class bicond_ga_lstm(object):
             else:
                 self.test_writer.add_summary(summaries,self.iterations)
             if self.iterations % 100 == 0:
-                self.saver.save(session, os.path.join('nn_snapshots/', 'lstm'), global_step=self.iterations)
+                self.saver.save(session, os.path.join('nn_snapshots/', 'bicondv2'), global_step=self.iterations)
+            if self.iterations % data_len == 0:
+                print output
+                self.saver.save(session, os.path.join('nn_snapshots/', 'bicondv2-epoch'+str(int(self.iterations/float(data_len)))))
 
             total_count += true_count.sum()
             acc = total_count/float((index+1) * self.batch_size)
@@ -171,7 +204,7 @@ class bicond_ga_lstm(object):
                 print "batch " + str(index+1) + "/" + str(num_batches) + "\tbatch loss: " + str(loss) + "\t batch acc: " + str(float(true_count.sum())/self.batch_size) + "\t dur:" + str(dur)
             losses.append(loss)
 
-        return np.mean(losses),acc
+        return np.mean(losses),acc,all_ids,predicted_labels,true_labels
 
     def run_batch(self,data_filename,indices,isTraining,session):
         batch,indices = nn_input_data.get_batch(data_filename,indices,self.batch_size,self.headline_truncate_len,self.body_truncate_len,self.data_dim,self.w2v,isTraining)
@@ -183,7 +216,7 @@ class bicond_ga_lstm(object):
         else:
             loss, true_count, output,summaries = session.run([self.loss, self.eval_correct, self.output,self.merged], feed_dict=feed)
 
-        return loss,true_count,indices,summaries
+        return loss,true_count,indices,summaries,output,batch['batch_ids'],batch['batch_labels']
 
     def pred(self,session,data_filename,model_filename):
         """Gets the loss, acc of a loaded model, where model_filename is the relative path
@@ -193,8 +226,11 @@ class bicond_ga_lstm(object):
 
         return loss,acc
     
-    def score(self, data):
-        print 'score'
+    def score(self, ids, predicted, true_labels):
+        #Get list of unique ids
+        #Iterate through list and get the indices of the current id
+        #Get the majority vote and assign as predicted label
+
         return 1
 
     def load(self, session,filename):
