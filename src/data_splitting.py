@@ -6,9 +6,10 @@ import sys
 import argparse
 import augment_synonym
 import utils
+import os
 
 
-def even_split(df_A, per=0.8, valper=0.8, max_tries = 10, diff=0.03, train_file= None, test_file = None, val_file = None, sfo=False):
+def even_split(df_A, per=0.8, valper=0.2, max_tries = 10, diff=0.03, train_file= None, test_file = None, val_file = None, sfo=False):
     even=False
     tries=0
 
@@ -18,7 +19,7 @@ def even_split(df_A, per=0.8, valper=0.8, max_tries = 10, diff=0.03, train_file=
         tries += 1
 
     if even:
-        print 'Whole set:', getper(df_ALL)
+        print 'Whole set:', getper(df_A)
         print 'Testing:', len(df_test), getper(df_test)
         print 'Training:', len(df_train),getper(df_train)
     else:
@@ -32,12 +33,12 @@ def even_split(df_A, per=0.8, valper=0.8, max_tries = 10, diff=0.03, train_file=
     tries=0
     #split again to obtain cross validation file
     while not even and tries < max_tries:
-        df_train, df_val = data_splitting(valper, df_train)
+        df_train, df_val = data_splitting(1-valper, df_train)
         even = check_splitting(diff, df_A, df_train, df_val)
         tries += 1
 
     if even:
-        print 'Whole set:', getper(df_ALL)
+        print 'Whole set:', getper(df_A)
         print 'validation:', len(df_val),getper(df_val)
         print 'Training:', len(df_train), getper(df_train)
     else:
@@ -84,7 +85,7 @@ def oneoff_cleanup(df_B, df_S,cleanup=False,excl_stances=[],excl_bodies=[624,168
             df_S = df_S[~mask]
     return df_B, df_S
 
-def window_split(s,size=150,window=75):
+def window_split(s, w2v,size=150,window=75):
     '''
     Has to be run before data crossing - will explode rows later on after crossed
     input: sentence
@@ -92,26 +93,32 @@ def window_split(s,size=150,window=75):
     output: sliding window of chunks which are stings, default size=150, default window=75
     MISSING: integrate the tokenization from w2v here
     '''
-    s = pairwise_tokenize(s,w2v,remove_stopwords=True)
+    s = augment_synonym.pairwise_tokenize(s,w2v,remove_stopwords=True)
     #s = str.split(s) #call the tokenize function here
     if len(s)<size:
         return [" ".join(s)]
     chunks = [[" ".join(s   [i:i+size])] for i in xrange(0,len(s)-window,window)]
     return chunks
 
-def import_data(B, S, w2v, all_save = None):
+def import_data(B, S, w2v, all_save = None, window=True):
     df_B = pd.read_csv(B)
     df_S = pd.read_csv(S)
     df_B, df_S = oneoff_cleanup(df_B, df_S, True)
-    df_B['articleBody'] = df_B['articleBody'].apply(window_split,w2v)
-    df_B_expl = explode_data(df_B,['Body ID'])
-    save_dataframe(df_B_expl,'bodies_expl.csv',sfo=False)
+    if window:
+        df_B['articleBody'] = df_B['articleBody'].apply(window_split, args=(w2v,150,75))
     df_ALL = data_crossing(df_B, df_S, all_save)
     return df_ALL
 
-def explode_data(df,headers,level='level_1'):
-    df_expl =  df.groupby(headers).articleBody.apply(lambda x: pd.DataFrame(x.values[0])).reset_index().drop(level, axis = 1)
+def explode_data(df):
+    df = df.sort('Stance ID')
+    all_cols = list(df.columns.values)
+    all_cols.remove('articleBody')
+    level= 'level_' + str(len(all_cols))
+    print len(df)
+    df_expl =  df.groupby(all_cols).articleBody.apply(lambda x: pd.DataFrame(x.values[0])).reset_index().drop(level, axis = 1)
     df_expl['articleBody'] = df_expl[0]
+    df_expl = df_expl.sort('Stance ID')
+    print len(df_expl)
     return df_expl
 
 def data_crossing(df_B, df_S, df_all_save= None):
@@ -137,7 +144,6 @@ def data_crossing(df_B, df_S, df_all_save= None):
 
 
 def data_splitting(per,df_ALL):
-
     headlines = pd.DataFrame.from_dict(coll.Counter(df_ALL['Stance ID']), orient='index').reset_index()
     bodies = pd.DataFrame.from_dict(coll.Counter(df_ALL['New Body ID']), orient='index').reset_index()
 
@@ -153,7 +159,7 @@ def data_splitting(per,df_ALL):
     test = df_ALL[~df_ALL['New Body ID'].isin(train_B)]
     #remove the headlines trained on
     test = test[~test['Stance ID'].isin(train_H)]
-
+    
     return train, test
 
 def getper(data):
@@ -175,16 +181,35 @@ def check_splitting(diff,df_ALL,train,test):
             return False
     return True
 
+def preprocess_all(bodies, stances, save_dir='./', augment_syn=True, window=True, split_per=0.8, val_per=0.2, diff=0.03, max_tries=10):
+    w2v_file = 'GoogleNews-vectors-negative300.bin.gz'
+    w2v_url = 'https://drive.google.com/file/d/0B7XkCwpI5KDYNlNUTTlSS21pQmM'
+    w2v = utils.load_w2v(w2v_file,w2v_url)
+    df_all = import_data(bodies, stances, w2v, window=window)
+    df_tr, df_te, df_val = even_split(df_all, split_per, val_per, max_tries, diff)
+    if window:
+        print 'test'
+        df_te = explode_data(df_te)
+        print 'val'
+        df_val = explode_data(df_val)
+        print 'train'
+        df_tr = explode_data(df_tr)
+    
+    augment_synonym.augment_headlines(df_tr, w2v, os.path.join(save_dir,'train.csv'), nrows=None, augment=augment_syn)
+    augment_synonym.augment_headlines(df_val, w2v, os.path.join(save_dir,'val.csv'), nrows=None, augment=False)
+    augment_synonym.augment_headlines(df_te, w2v, os.path.join(save_dir,'test.csv'), nrows=None, augment=False)
+
+
 if __name__=='__main__':
     '''
     python data_splitting.py --bodies '../dataset/train_bodies.csv' --stances '../dataset/train_stances.csv' --save_all 'all.csv' --save_train 'train.csv' --save_test 'test.csv' --save_val 'validation.csv'  --save_format_original
     '''
-
+    '''
     parser = argparse.ArgumentParser()
     parser.add_argument('--bodies', required=True, type=str, help='specify the location of the training bodies file')
     parser.add_argument('--stances', required=True, type=str, help='specify the location of the training stances file')
-    parser.add_argument('--split_per', default=0.8, type=float, help='specify the percentage for the train set')
-    parser.add_argument('--val_per', default=0.8, type=float, help='specify the percentage for the validation set')
+    parser.add_argument('--train_per', default=0.8, type=float, help='specify the percentage for the train set')
+    parser.add_argument('--val_per', default=0.2, type=float, help='specify the percentage for the validation set')
     parser.add_argument('--diff', default=0.03, type=float, help='max ratio difference between the original stratification... eg 0.03 and 75%% original split -> 78%% or 72%%')
     parser.add_argument('--save_all', type=str, help='specify the file to save the joined bodies and stances table')
     parser.add_argument('--save_train', type=str, help='specify the file to save the training set')
@@ -206,3 +231,5 @@ if __name__=='__main__':
 
     df_ALL = import_data(args.bodies, args.stances, w2v, args.save_all)
     even_split(df_ALL, args.split_per, args.val_per, args.max_tries, args.diff, args.save_train, args.save_test, args.save_val, args.save_format_original)
+    '''
+    preprocess_all('../dataset/train_bodies.csv', '../dataset/train_stances.csv', window=False)

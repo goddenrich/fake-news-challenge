@@ -10,7 +10,7 @@ from nltk.corpus import stopwords,wordnet
 from nltk.tag import pos_tag
 from gensim.models.keyedvectors import KeyedVectors
 
-def augment_headlines(df,w2v,output_filename,nrows=None):
+def augment_headlines(df,w2v,output_filename,nrows=None, augment=True):
     """Takes a dataframe (train or test) and returns a new dataframe with new rows of sentences that have their words switched out for synonyms
         Only does this for the first nrows, defaults to all"""
     if nrows == None:
@@ -19,7 +19,6 @@ def augment_headlines(df,w2v,output_filename,nrows=None):
     ave_dur = []
     #header= "Index,Headline,Stance ID,Body ID,Stance,articleBody,New Body ID"
     header= "Index|Headline|Stance ID|Body ID|Stance|articleBody|New Body ID"
-
     Indices = df.index
     Headlines = df.Headline
     StanceIDs = df.loc[:,"Stance ID"]
@@ -34,22 +33,23 @@ def augment_headlines(df,w2v,output_filename,nrows=None):
             if i % 100 == 0:
                 print i
             index = str(Indices[i])
-            headline = Headlines.iloc[i]
+            headline = Headlines.iloc[i].replace('\n',' ').replace("|",' ').replace(",",'')
             stanceID = StanceIDs.iloc[i]
             bodyid = str(BodyIDs.iloc[i])
             stance = Stances.iloc[i]
-            body = Bodies.iloc[i].replace('\n','').replace("|",'')
+            body = Bodies.iloc[i].replace('\n',' ').replace("|",'').replace(",",'')
             newbodyid = str(NewBodyIDs.iloc[i])
 
             start_time = time.time()
-            new_sentences = generate_similar_sentences(headline,w2v)
             row = "|".join([str(index),str(headline),str(stanceID),str(bodyid),str(stance),str(body),str(newbodyid)])
             write_file.write(row + "\n")
 
-            for counter,new_sent in enumerate(new_sentences):
-                amended_stance_id = str(stanceID) + "_" + str(counter)
-                row = "|".join([str(index),str(new_sent),amended_stance_id,str(bodyid),str(stance),str(body),str(newbodyid)])
-                write_file.write(row + "\n")
+            if augment:
+                new_sentences = generate_similar_sentences(headline,w2v)
+                for counter,new_sent in enumerate(new_sentences):
+                    amended_stance_id = str(stanceID) + "_" + str(counter)
+                    row = "|".join([str(index),str(new_sent),amended_stance_id,str(bodyid),str(stance),str(body),str(newbodyid)])
+                    write_file.write(row + "\n")
 
             dur = time.time() - start_time
             ave_dur.append(dur)
