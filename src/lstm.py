@@ -4,6 +4,7 @@ import utils
 import numpy as np
 import time
 import os
+import math
 
 class lstm(object):
     def __init__(self, params,sess):
@@ -114,17 +115,21 @@ class lstm(object):
 
     def train(self,train_filename,valid_filename,test_filename,num_epochs,session,run_test=False):
         for epoch in xrange(num_epochs):
-            train_loss,acc,all_ids,predicted_labels,true_labels = self.run_epoch(train_filename,True,session,verbose=False)
+            start_time = time.time()
 
+            train_loss,acc,all_ids,predicted_labels,true_labels = self.run_epoch(train_filename,True,session,verbose=False)
+            dur = time.time() - start_time
+            dur = dur/float(60)
             if run_test:
                 valid_loss,valid_acc = self.pred(session,valid_filename)
                 print "=========== epoch = " + str(epoch) + "=============="
                 print "train_loss: " + str(train_loss) + "\ttrain_acc: " + str(acc) + \
                     " valid_loss: " + str(valid_loss) + "\tvalid_acc: " + str(valid_acc)
+                print "train time (min): " + str(dur)
             else:
                 print "=========== epoch = " + str(epoch) + "=============="
                 print "train_loss: " + str(train_loss) + "\ttrain_acc: " + str(acc)
-
+                print "train time (min): " + str(dur)
 
     def run_epoch(self,data_filename,isTraining,session,verbose =False):
         data_len = len(list(open(data_filename,'rb')))
@@ -172,9 +177,9 @@ class lstm(object):
 
     def run_batch(self,data_filename,indices,isTraining,session):
         batch,indices = nn_input_data.get_batch(data_filename,indices,self.batch_size,self.headline_truncate_len,self.body_truncate_len,self.data_dim,self.w2v,isTraining)
+        input_vectors = nn_input_data.simple_combine(batch['batch_headlines'],batch['batch_bodies'])
 
-        feed = {self.headline_placeholder: batch['batch_headlines'],self.body_placeholder:batch['batch_bodies'], self.label_placeholder: batch['batch_labels'], self.head_len_placeholder : batch['batch_headline_len'],self.body_len_placeholder: batch['batch_body_len']}
-
+        feed = {self.input_placeholder: input_vectors,self.label_placeholder: batch['batch_labels'], self.length_placeholder: batch['batch_input_len']}
         if isTraining:
             loss, true_count, _, output,summaries = session.run([self.loss, self.eval_correct, self.train_step, self.output,self.merged], feed_dict=feed)
         else:

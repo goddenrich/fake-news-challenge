@@ -152,16 +152,20 @@ class bicond_ga_lstm(object):
 
     def train(self,train_filename,valid_filename,test_filename,num_epochs,session,run_test=False):
         for epoch in xrange(num_epochs):
+            start_time = time.time()
             train_loss,acc,all_ids,predicted_labels,true_labels = self.run_epoch(train_filename,True,session,verbose=False)
-
+            dur = time.time() - start_time
+            dur = dur/float(60)
             if run_test:
                 valid_loss,valid_acc = self.pred(session,valid_filename)
                 print "=========== epoch = " + str(epoch) + "=============="
                 print "train_loss: " + str(train_loss) + "\ttrain_acc: " + str(acc) + \
                     " valid_loss: " + str(valid_loss) + "\tvalid_acc: " + str(valid_acc)
+                print "train time (min): " + str(dur)
             else:
                 print "=========== epoch = " + str(epoch) + "=============="
                 print "train_loss: " + str(train_loss) + "\ttrain_acc: " + str(acc)
+                print "train time (min): " + str(dur)
 
 
     def run_epoch(self,data_filename,isTraining,session,verbose =False):
