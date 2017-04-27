@@ -16,12 +16,20 @@ def get_batch(data_filename,indices,batch_size,headline_truncate_len,body_trunca
     lines = list(lines)
     lines = lines[1:] # skip header
 
-    if len(indices) < batch_size:
+    if len(indices) < batch_size and isTraining:
         new_indices = range(len(lines))
-        if isTraining:
-            random.seed(time.time())
-            random.shuffle(indices)
+        random.seed(time.time())
+        random.shuffle(indices)
         indices.extend(new_indices)
+
+    if not isTraining:
+        if len(indices) == 0:
+            new_indices = range(len(lines))
+            indices.extend(new_indices)
+        if len(indices) < batch_size:
+            required = batch_size - len(indices)
+            for i in xrange(required):
+                indices.append(-1)
 
     batch_headlines = np.zeros((batch_size,headline_truncate_len,data_dim))
     batch_bodies = np.zeros((batch_size,body_truncate_len,data_dim))
@@ -33,42 +41,49 @@ def get_batch(data_filename,indices,batch_size,headline_truncate_len,body_trunca
 
     for i in xrange(batch_size):
         index = indices.pop(0)
-        line = lines[index]
-        line = line.split("|")
-        #Index|Headline|Stance ID|Body ID|Stance|articleBody|New Body ID
-        raw_headline = line[1]
-        raw_body = line[5]
-        raw_label = line[4]
-        body_id = line[3]
-        stance_id = line[2]
+        if index != -1:
+            line = lines[index]
+            line = line.split("|")
+            #Index|Headline|Stance ID|Body ID|Stance|articleBody|New Body ID
+            raw_headline = line[1]
+            raw_body = line[5]
+            raw_label = line[4]
+            body_id = line[3]
+            stance_id = line[2]
 
-        headline = np.transpose(sentence_to_mat(raw_headline,w2v)) #num_words x w2v_dim
-        body = np.transpose(sentence_to_mat(raw_body,w2v)) #num_words x w2v_dim
+            headline = np.transpose(sentence_to_mat(raw_headline,w2v)) #num_words x w2v_dim
+            body = np.transpose(sentence_to_mat(raw_body,w2v)) #num_words x w2v_dim
 
-        #Format input into the batch
-        if body.shape[0] > body_truncate_len:
-            body_len = body_truncate_len
-            batch_bodies[i,:,:] = body[:body_len,:]
-            batch_body_len.append(body_len)
+            #Format input into the batch
+            if body.shape[0] > body_truncate_len:
+                body_len = body_truncate_len
+                batch_bodies[i,:,:] = body[:body_len,:]
+                batch_body_len.append(body_len)
+            else:
+                body_len = body.shape[0]
+                batch_body_len.append(body_len)
+                batch_bodies[i,:body_len,:] = body[:body_len,:]
+
+            if headline.shape[0] > headline_truncate_len:
+                head_len = headline_truncate_len
+                batch_headlines[i,:,:] = headline[:headline_truncate_len,:]
+                batch_headline_len.append(headline_truncate_len)
+            else:
+                head_len = headline.shape[0]
+                batch_headlines[i,:head_len,:] = headline[:head_len,:]
+                batch_headline_len.append(head_len)
+
+            batch_input_len.append(head_len + body_len)
+
+            label = one_hot_encode(raw_label)
+            batch_labels.append(label)
+            batch_ids.append(str(stance_id))
         else:
-            body_len = body.shape[0]
-            batch_body_len.append(body_len)
-            batch_bodies[i,:body_len,:] = body[:body_len,:]
-
-        if headline.shape[0] > headline_truncate_len:
-            head_len = headline_truncate_len
-            batch_headlines[i,:,:] = headline[:headline_truncate_len,:]
-            batch_headline_len.append(headline_truncate_len)
-        else:
-            head_len = headline.shape[0]
-            batch_headlines[i,:head_len,:] = headline[:head_len,:]
-            batch_headline_len.append(head_len)
-
-        batch_input_len.append(head_len + body_len)
-
-        label = one_hot_encode(raw_label)
-        batch_labels.append(label)
-        batch_ids.append(str(stance_id) +"_" + str(body_id))
+            batch_body_len.append(0)
+            batch_headline_len.append(0)
+            batch_input_len.append(0)
+            batch_labels.append(0)
+            batch_ids.append(-1)
 
     batch_headlines = np.array(batch_headlines).astype(np.float32)
     batch_bodies = np.array(batch_bodies).astype(np.float32)
@@ -91,6 +106,11 @@ def get_batch(data_filename,indices,batch_size,headline_truncate_len,body_trunca
 
 def one_hot_encode(label):
     mapping = {'unrelated':0, 'agree':1, 'discuss':2, 'disagree':3}
+    return mapping[label]
+
+def reverse_encode(label):
+    mapping = ['unrelated', 'agree', 'discuss','disagree']
+
     return mapping[label]
 
 

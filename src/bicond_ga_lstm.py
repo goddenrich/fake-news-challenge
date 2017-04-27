@@ -4,6 +4,7 @@ import utils
 import numpy as np
 import time
 import os
+import math
 
 class bicond_ga_lstm(object):
     def __init__(self, params,sess):
@@ -99,7 +100,7 @@ class bicond_ga_lstm(object):
                 index = tf.range(0, self.batch_size) * self.body_truncate_len + (self.body_len_placeholder - 1)
                 # Indexing
                 body_outputs = tf.gather(tf.reshape(body_outputs, [-1, self.lstm_units*2]), index)
-                #### End of adoption
+                #### End of adaptation
 
                 #repeat-stack column-wise HN
                 e = tf.constant(1.0,shape=[self.headline_truncate_len,self.batch_size,self.lstm_units*2])
@@ -149,15 +150,12 @@ class bicond_ga_lstm(object):
 
         return eval_correct
 
-    def train(self,train_filename,valid_filename,test_filename,num_epochs,sess,run_test=False):
+    def train(self,train_filename,valid_filename,test_filename,num_epochs,session,run_test=False):
         for epoch in xrange(num_epochs):
-            train_loss,acc,all_ids,predicted_labels,true_labels = self.run_epoch(train_filename,True,sess,verbose=False)
-            # np.save('all_ids'+str(epoch),all_ids)
-            # np.save('predicted_labels'+str(epoch),all_ids)
-            # np.save('true_labels'+str(epoch),all_ids)
+            train_loss,acc,all_ids,predicted_labels,true_labels = self.run_epoch(train_filename,True,session,verbose=False)
 
             if run_test:
-                valid_loss,valid_acc = self.pred(sess,valid_filename)
+                valid_loss,valid_acc = self.pred(session,valid_filename)
                 print "=========== epoch = " + str(epoch) + "=============="
                 print "train_loss: " + str(train_loss) + "\ttrain_acc: " + str(acc) + \
                     " valid_loss: " + str(valid_loss) + "\tvalid_acc: " + str(valid_acc)
@@ -168,7 +166,10 @@ class bicond_ga_lstm(object):
 
     def run_epoch(self,data_filename,isTraining,session,verbose =False):
         data_len = len(list(open(data_filename,'rb')))
-        num_batches = data_len/self.batch_size
+        if not isTraining:
+            num_batches = math.ceil(data_len/self.batch_size)
+        else:
+            num_batches = data_len/self.batch_size
         losses = []
         total_count = 0
         acc = 0.0
@@ -192,11 +193,11 @@ class bicond_ga_lstm(object):
                 self.train_writer.add_summary(summaries,self.iterations)
             else:
                 self.test_writer.add_summary(summaries,self.iterations)
-            if self.iterations % 100 == 0:
-                self.saver.save(session, os.path.join('nn_snapshots/', 'bicondv2'), global_step=self.iterations)
-            if self.iterations + 1 % data_len == 0:
+            if self.iterations % 100 == 0 and isTraining:
+                self.saver.save(session, os.path.join('nn_snapshots/', 'bicondv3'), global_step=self.iterations)
+            if self.iterations + 1 % data_len == 0 and isTraining:
                 print output
-                self.saver.save(session, os.path.join('nn_snapshots/', 'bicondv2-epoch'+str(int(self.iterations/float(data_len)))))
+                self.saver.save(session, os.path.join('nn_snapshots/', 'bicondv3-epoch'+str(int(self.iterations/float(data_len)))))
 
             total_count += true_count.sum()
             acc = total_count/float((index+1) * self.batch_size)
@@ -219,19 +220,49 @@ class bicond_ga_lstm(object):
 
         return loss,true_count,indices,summaries,output,batch['batch_ids'],batch['batch_labels']
 
-    def pred(self,session,data_filename,model_filename):
-        """Gets the loss, acc of a loaded model, where model_filename is the relative path
+    def pred(self,session,data_filename,model_filename=None):
+        """Gets the loss, acc of a model in the current training session, if model_filename is provided, will use that model using the relative path
         e.g. nn_snapshots/lstm-1000"""
-        self.load(session,model_filename)
-        loss,acc = self.run_epoch(data_filename,False,session,verbose =True)
+        
+        if model_filename:
+            self.load(session,model_filename)
+
+        loss,acc,all_ids,predicted_labels,true_labels = self.run_epoch(data_filename,False,session,verbose =False)
+        self.score(all_ids,predicted_labels,true_labels)
 
         return loss,acc
     
-    def score(self, ids, predicted, true_labels):
-        #Get list of unique ids
-        #Iterate through list and get the indices of the current id
-        #Get the majority vote and assign as predicted label
+    def score(self, ids, all_predicted, all_true_labels):
+        """Takes list of unique ids, all the predictions + true labels for every row in the input
+            Iterates through list and get the indices of the current id
+            Get the majority vote and assign as predicted label
+            Uses Fake news scoring algo"""
 
+        ids = ids[ids != np.array(None)]
+        unique_ids = np.unique(ids)
+        predicted = []
+        true_labels = []
+
+        for i in xrange(len(unique_ids)):
+            current = unique_ids[i]
+            if current != -1:
+                current_inds = ids == current
+                true_label = all_true_labels[current_inds][0]
+                predicted_labels_instance = all_predicted[current_inds]
+                vals,counts = np.unique(predicted_labels_instance,return_counts=True)
+                predicted_label = vals[np.argmax(counts)]
+                predicted_label = nn_input_data.reverse_encode(int(predicted_label))
+                true_label = nn_input_data.reverse_encode(int(true_label))
+                predicted.append(predicted_label)
+                true_labels.append(true_label)
+
+        score,cm = self.score_submission(true_labels,predicted)
+        print score
+        self.print_confusion_matrix(cm)
+        null_score, max_score = self.score_defaults(true_labels)
+        print "null: " + str(null_score) + "max: " + str(max_score)
+
+        print "our score: " + str(score/float(max_score))
         return 1
 
     def load(self, session,filename):
@@ -240,6 +271,66 @@ class bicond_ga_lstm(object):
 
         self.saver.restore(session, filename)
 
-    def conf_mat(self, data):
-        print 'conf mat'
+    ###################################################
+    ######  Fake News Challenge scoring code ##########
+    ###################################################
+    def score_submission(self,gold_labels, test_labels):
+        FIELDNAMES = ['Headline', 'Body ID', 'Stance']
+        LABELS = ['agree', 'disagree', 'discuss', 'unrelated']
+        RELATED = LABELS[0:3]
 
+        score = 0.0
+        cm = [[0, 0, 0, 0],
+              [0, 0, 0, 0],
+              [0, 0, 0, 0],
+              [0, 0, 0, 0]]
+
+        for i, (g_stance, t_stance) in enumerate(zip(gold_labels, test_labels)):
+            if g_stance == t_stance:
+                score += 0.25
+                if g_stance != 'unrelated':
+                    score += 0.50
+            if g_stance in RELATED and t_stance in RELATED:
+                score += 0.25
+
+            cm[LABELS.index(g_stance)][LABELS.index(t_stance)] += 1
+
+        return score, cm
+
+    def print_confusion_matrix(self,cm):
+        FIELDNAMES = ['Headline', 'Body ID', 'Stance']
+        LABELS = ['agree', 'disagree', 'discuss', 'unrelated']
+        RELATED = LABELS[0:3]
+
+        lines = ['CONFUSION MATRIX:']
+        header = "|{:^11}|{:^11}|{:^11}|{:^11}|{:^11}|".format('', *LABELS)
+        line_len = len(header)
+        lines.append("-"*line_len)
+        lines.append(header)
+        lines.append("-"*line_len)
+
+        hit = 0
+        total = 0
+        for i, row in enumerate(cm):
+            hit += row[i]
+            total += sum(row)
+            lines.append("|{:^11}|{:^11}|{:^11}|{:^11}|{:^11}|".format(LABELS[i],
+                                                                       *row))
+            lines.append("-"*line_len)
+        lines.append("ACCURACY: {:.3f}".format(hit / float(total)))
+        print('\n'.join(lines))
+
+    def score_defaults(self,gold_labels):
+        """
+        Compute the "all false" baseline (all labels as unrelated) and the max
+        possible score
+        :param gold_labels: list containing the true labels
+        :return: (null_score, best_score)
+        """
+        unrelated = [g for g in gold_labels if g == 'unrelated']
+        null_score = 0.25 * len(unrelated)
+        max_score = null_score + (len(gold_labels) - len(unrelated))
+        return null_score, max_score
+    #######################################################
+    ######  END Fake News Challenge scoring code ##########
+    #######################################################

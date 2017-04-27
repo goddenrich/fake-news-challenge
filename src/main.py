@@ -1,7 +1,7 @@
 import utils
 import augment_synonym
 import numpy as np
-import lstm
+import bicond_ga_lstm
 import tensorflow as tf
 
 def sentence_to_mat(sentence,w2vmodel):
@@ -69,47 +69,49 @@ def train(params, bf='../dataset/train_bodies.csv', sf='../dataset/train_stances
 
 def test_train():
     exp1={'batch_size':100,
-            'learning_rate': .01,
-            'l2': 1e-3,
+            'learning_rate': .001,
+            'l2': 0,
             'data_dim': 300}
 
     exp2={'batch_size':100,
-            'learning_rate': .001,
-            'l2': 1e-3,
+            'learning_rate': .0001,
+            'l2': 0,
             'data_dim': 300}
 
     exp3={'batch_size':100,
-            'learning_rate': .01,
-            'l2': 1e-1,
+            'learning_rate': .00001,
+            'l2': 0,
             'data_dim': 300}
 
     exp4={'batch_size':100,
-            'learning_rate': .001,
-            'l2': 1e-1,
+            'learning_rate': .00001,
+            'l2': 0,
             'data_dim': 300}
 
-    experiments = [exp1,exp2,exp3,exp4]
+    experiments = [exp2] #[exp1,exp2,exp3,exp4]
 
-    train_filename = "train.csv" #temp is the output of running augment_synonyms.py
+    train_filename = "data/no_augmentation/train.csv" 
+    test_filename = "data/no_augmentation/test.csv"
     for params in experiments:
         print "----------------------learning rate:" + str(params['learning_rate']) + "-----------------"
         with tf.Graph().as_default():
 
             with tf.Session() as sess:
-                model = lstm.lstm(params,sess)
+                model = bicond_ga_lstm.bicond_ga_lstm(params,sess)
                 init = tf.global_variables_initializer()
                 sess.run(init)
-                model.train(train_filename,None,None,1,sess,False)
+                model.train(train_filename,test_filename,None,5,sess,True)
 
     return 
 
 def test_pred():
-    params={'batch_size':200,
+    params={'batch_size':100,
         'learning_rate': .01,
         'l2': 1e-4,
         'data_dim': 300}
-    data_filename = "temp.txt" #temp is the output of running augment_synonyms.py
-    model_filename = "nn_snapshots/"
+
+    data_filename = "data/no_augmentation/test.csv" 
+    model_filename = "nn_snapshots/bicondv3-100"
     with tf.Session() as sess:
             model = bicond_ga_lstm.bicond_ga_lstm(params,sess)
             init = tf.global_variables_initializer()
@@ -127,4 +129,4 @@ if __name__ == "__main__":
     # classify(params=hyperparams[0])
 
     test_train()
-    # test_pred()
+    #test_pred()
