@@ -33,22 +33,24 @@ def augment_headlines(df,w2v,output_filename,nrows=None, augment=True):
             if i % 100 == 0:
                 print i
             index = str(Indices[i])
-            headline = Headlines.iloc[i].replace('\n',' ').replace("|",' ').replace(",",'')
+            headline = Headlines.iloc[i]#.replace('\n',' ').replace("|",' ').replace(",",'')
             stanceID = StanceIDs.iloc[i]
             bodyid = str(BodyIDs.iloc[i])
             stance = Stances.iloc[i]
-            body = Bodies.iloc[i].replace('\n',' ').replace("|",'').replace(",",'')
+            body = Bodies.iloc[i]#.replace('\n',' ').replace("|",'').replace(",",'')
             newbodyid = str(NewBodyIDs.iloc[i])
 
             start_time = time.time()
             row = "|".join([str(index),str(headline),str(stanceID),str(bodyid),str(stance),str(body),str(newbodyid)])
+            assert(row.count('|')==6)
             write_file.write(row + "\n")
 
             if augment:
-                new_sentences = generate_similar_sentences(headline,w2v)
+                new_sentences = generate_similar_sentences(headline,w2v,num_outputs=10)
                 for counter,new_sent in enumerate(new_sentences):
                     amended_stance_id = str(stanceID) + "_" + str(counter)
                     row = "|".join([str(index),str(new_sent),amended_stance_id,str(bodyid),str(stance),str(body),str(newbodyid)])
+                    assert(row.count('|')==6)
                     write_file.write(row + "\n")
 
             dur = time.time() - start_time

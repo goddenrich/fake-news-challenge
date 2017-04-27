@@ -28,7 +28,7 @@ def even_split(df_A, per=0.8, valper=0.2, max_tries = 10, diff=0.03, train_file=
         print 'Testing:', getper(df_test)
         print 'Training:', getper(df_train)
 
-
+    '''
     even=False
     tries=0
     #split again to obtain cross validation file
@@ -57,9 +57,9 @@ def even_split(df_A, per=0.8, valper=0.2, max_tries = 10, diff=0.03, train_file=
     if val_file is not None:
         save_dataframe(df_val, val_file, sfo)
 
+    '''
 
-
-    return df_train, df_test, df_val
+    return df_train, df_test#, df_val
 
 def save_dataframe(df, save_file, sfo=False):
     if not sfo:
@@ -83,6 +83,9 @@ def oneoff_cleanup(df_B, df_S,cleanup=False,excl_stances=[],excl_bodies=[624,168
             df_B = df_B[~mask]
             mask = df_S['Body ID'].isin(excl_bodies)
             df_S = df_S[~mask]
+    df_B['articleBody']=df_B['articleBody'].map(lambda x: x.replace('|',' ').replace(',','').replace('\n',' '))
+    df_S['Headline']=df_S['Headline'].map(lambda x: x.replace('|',' ').replace(',','').replace('\n',' '))
+
     return df_B, df_S
 
 def window_split(s, w2v,size=150,window=75):
@@ -126,15 +129,20 @@ def data_crossing(df_B, df_S, df_all_save= None):
     df_H = pd.DataFrame.from_dict(df_H, orient='index').reset_index()
     df_H['Stance ID'] = df_H.index
     df_H = df_H.rename(columns={'index': 'Headline'})
-    df_A = coll.Counter(df_B['Body ID'])
-    df_A = pd.DataFrame.from_dict(df_A, orient='index').reset_index()
-    df_A['New Body ID'] = df_A.index
-    df_A = df_A.rename(columns={'index': 'Body ID'})
+    #df_A = coll.Counter(df_B['Body ID'])
+    #df_A = pd.DataFrame.from_dict(df_A, orient='index').reset_index()
+    #df_A['New Body ID'] = df_A.index
+    #df_A = df_A.rename(columns={'index': 'Body ID'})
     df_S = pd.merge(df_H, df_S, on='Headline')
     df_S = df_S.drop(0, axis=1)
-    df_B = pd.merge(df_B, df_A, on='Body ID')
-    df_B = df_B.drop(0, axis=1)
+    #df_B = pd.merge(df_B, df_A, on='Body ID')
+    #df_B = df_B.drop(0, axis=1)
+    df_B['New Body ID'] = df_B.index
     df_ALL = pd.merge(df_S, df_B, on='Body ID')
+    print df_ALL
+    #df_ALL.apply(lambda x:'%s_%s' % (x['Stance ID'],x['Body Id']),axis=1)
+    df_ALL['Stance ID'] = df_ALL['Stance ID'].map(str) + '_'+ df_ALL['Body ID'].map(str)
+    print df_ALL
 
 
     if df_all_save is not None:
@@ -181,22 +189,26 @@ def check_splitting(diff,df_ALL,train,test):
             return False
     return True
 
-def preprocess_all(bodies, stances, save_dir='./', augment_syn=True, window=True, split_per=0.8, val_per=0.2, diff=0.03, max_tries=10):
+def preprocess_all(bodies, stances, save_dir='./', augment_syn=True, window=True, split_per=0.6, val_per=0.2, diff=0.03, max_tries=10):
     w2v_file = 'GoogleNews-vectors-negative300.bin.gz'
     w2v_url = 'https://drive.google.com/file/d/0B7XkCwpI5KDYNlNUTTlSS21pQmM'
     w2v = utils.load_w2v(w2v_file,w2v_url)
     df_all = import_data(bodies, stances, w2v, window=window)
-    df_tr, df_te, df_val = even_split(df_all, split_per, val_per, max_tries, diff)
+    #df_tr, df_te, df_val = even_split(df_all, split_per, val_per, max_tries, diff)
+    df_tr, df_te = even_split(df_all, split_per, val_per, max_tries, diff)
     if window:
         print 'test'
         df_te = explode_data(df_te)
-        print 'val'
-        df_val = explode_data(df_val)
+        #print 'val'
+        #df_val = explode_data(df_val)
         print 'train'
         df_tr = explode_data(df_tr)
-    
+    print 'len train', len(df_tr)
+    print 'len test', len(df_te)
+    #print 'len val', len(df_val)
     augment_synonym.augment_headlines(df_tr, w2v, os.path.join(save_dir,'train.csv'), nrows=None, augment=augment_syn)
-    augment_synonym.augment_headlines(df_val, w2v, os.path.join(save_dir,'val.csv'), nrows=None, augment=False)
+    print 'done train'
+    #augment_synonym.augment_headlines(df_val, w2v, os.path.join(save_dir,'val.csv'), nrows=None, augment=False)
     augment_synonym.augment_headlines(df_te, w2v, os.path.join(save_dir,'test.csv'), nrows=None, augment=False)
 
 
@@ -232,4 +244,4 @@ if __name__=='__main__':
     df_ALL = import_data(args.bodies, args.stances, w2v, args.save_all)
     even_split(df_ALL, args.split_per, args.val_per, args.max_tries, args.diff, args.save_train, args.save_test, args.save_val, args.save_format_original)
     '''
-    preprocess_all('../dataset/train_bodies.csv', '../dataset/train_stances.csv', window=False)
+    preprocess_all('../dataset/train_bodies.csv', '../dataset/train_stances.csv', window=True, augment_syn=False)
