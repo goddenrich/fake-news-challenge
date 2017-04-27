@@ -15,7 +15,7 @@ class lstm(object):
         self.batch_size = params['batch_size']
         self.learning_rate = params['learning_rate']
         self.l2 = params['l2']
-        self.lstm_units = 64
+        self.lstm_units = 100
         self.hidden_units = 512
 
         #DataPrams
@@ -38,9 +38,9 @@ class lstm(object):
 
         #Summary writers
         self.merged = tf.summary.merge_all()
-        self.train_writer = tf.summary.FileWriter('visual_logs' + '/train',
+        self.train_writer = tf.summary.FileWriter('visual_logs_lstm' + '/train',
                                               sess.graph)
-        self.test_writer = tf.summary.FileWriter('visual_logs'+ '/test')
+        self.test_writer = tf.summary.FileWriter('visual_logs_lstm'+ '/test')
 
         #Saver
         self.saver = tf.train.Saver()
@@ -50,42 +50,36 @@ class lstm(object):
         with tf.device('/gpu:0'):
             self.input_placeholder = tf.placeholder(tf.float32, shape=(None, self.input_truncate_len, self.data_dim))
             self.label_placeholder = tf.placeholder(tf.int64, shape=(self.batch_size,))
-            self.length_placeholder = tf.placeholder(tf.float32, shape=(self.batch_size,))
+            self.length_placeholder = tf.placeholder(tf.int32, shape=(self.batch_size,))
 
-            # inputs = tf.transpose(self.input_placeholder,[1,0,2])
-            # inputs = tf.reshape(self.input_placeholder,[-1,self.data_dim])
+            inputs = tf.transpose(self.input_placeholder,[1,0,2])
+            inputs = tf.reshape(self.input_placeholder,[-1,self.data_dim])
             # inputs = tf.split(axis=0,num_or_size_splits=self.input_truncate_len,value=inputs)
+            inputs = tf.split(inputs, self.input_truncate_len, 0)
 
-            inputs = tf.unstack(self.input_placeholder,self.input_truncate_len,1)
+            # inputs = tf.unstack(self.input_placeholder,self.input_truncate_len,1)
 
             #layer 1
             with tf.variable_scope('BIRNN',initializer = tf.contrib.layers.xavier_initializer()):
                 fwd_cell_1 = tf.contrib.rnn.LSTMCell(self.lstm_units,forget_bias = 1.0)
                 bkwd_cell_1 = tf.contrib.rnn.LSTMCell(self.lstm_units,forget_bias = 1.0)
-                fwd_cell_2 = tf.contrib.rnn.LSTMCell(self.lstm_units,forget_bias = 1.0)
-                bkwd_cell_2 = tf.contrib.rnn.LSTMCell(self.lstm_units,forget_bias = 1.0)
-                combined_fwd = tf.contrib.rnn.MultiRNNCell([fwd_cell_1,fwd_cell_2])
-                combined_bwd = tf.contrib.rnn.MultiRNNCell([bkwd_cell_1,bkwd_cell_2])
 
-                #comment out below line for regular lstm and uncomment line underneath
-                bidi_output,_,_ = tf.contrib.rnn.static_bidirectional_rnn(combined_fwd,combined_bwd, inputs, 
-                       initial_state_fw=None, initial_state_bw=None, dtype=tf.float32)
-                #bidi_output,states = tf.nn.rnn(combined_fwd,inputs,dtype=tf.float32)
+                bidi_output,_,_ = tf.contrib.rnn.static_bidirectional_rnn(fwd_cell_1,bkwd_cell_1, inputs, 
+                       initial_state_fw=None, initial_state_bw=None, dtype=tf.float32,sequence_length=self.length_placeholder)
 
-    
-            #Comment out below line for regular lstm and uncomment the line underneath
-            W1 = tf.get_variable("W1", shape=[self.lstm_units*2,self.hidden_units],initializer=tf.contrib.layers.xavier_initializer())
-            #W1 = tf.get_variable("W1", shape=[self.lstm_units,self.hidden_units],initializer=tf.contrib.layers.xavier_initializer())
-            b1 = tf.Variable(tf.zeros([self.hidden_units]))
-            y1 = tf.tanh(tf.matmul(bidi_output[-1],W1) + b1)
+                outputs = tf.stack(bidi_output)
+                outputs = tf.transpose(outputs, [1, 0, 2])
 
-            W2 = tf.get_variable("W2", shape=[self.hidden_units,self.hidden_units],initializer=tf.contrib.layers.xavier_initializer())
-            b2 = tf.Variable(tf.zeros([self.hidden_units]))
-            y2 = tf.tanh(tf.matmul(y1,W2) + b2)
+                # Hack to build the indexing and retrieve the right output.
+                batch_size = tf.shape(outputs)[0]
+                # Start indices for each sample
+                index = tf.range(0, batch_size) * self.input_truncate_len + (self.length_placeholder - 1)
+                # Indexing
+                outputs = tf.gather(tf.reshape(outputs, [-1, self.lstm_units*2]), index)
 
-            W3 = tf.get_variable("W3", shape=[self.hidden_units,4],initializer=tf.contrib.layers.xavier_initializer())
+            W3 = tf.get_variable("W3", shape=[self.lstm_units*2,4],initializer=tf.truncated_normal_initializer(stddev=0.01))
             b3 = tf.Variable(tf.zeros([4]))
-            y3 = tf.matmul(y2,W3) + b3
+            y3 = tf.matmul(outputs,W3) + b3
         return y3
 
     def calculate_loss(self,logits):
@@ -93,7 +87,7 @@ class lstm(object):
         for i in tf.trainable_variables():
             regularization += tf.nn.l2_loss(i)
         data_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=self.label_placeholder))
-        loss = data_loss + self.l2 * regularization
+        loss = data_loss
 
         tf.summary.scalar('data_loss', data_loss)
 
@@ -101,16 +95,21 @@ class lstm(object):
         
 
     def add_training(self):
-        return tf.train.AdamOptimizer(self.learning_rate).minimize(self.loss)
+        optimizer = tf.train.AdamOptimizer(self.learning_rate)
+        grads = optimizer.compute_gradients(self.loss)
+
+        clipped_grads = [(tf.clip_by_value(grad,-1,1),var) for grad,var in grads]
+        train_step = optimizer.apply_gradients(clipped_grads)
+        return train_step
 
     def evaluate(self,output):
-        eval_correct = tf.nn.in_top_k(output, self.label_placeholder, 1)
+        # eval_correct = tf.nn.in_top_k(output, self.label_placeholder, 1)
 
         correct_pred = tf.equal(tf.argmax(output, 1), self.label_placeholder)
         accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
         tf.summary.scalar('accuracy', accuracy)
 
-        return eval_correct
+        return tf.reduce_sum(tf.cast(correct_pred,tf.int32))
 
     def train(self,train_filename,valid_filename,test_filename,num_epochs,sess,run_test=False):
         for epoch in xrange(num_epochs):
@@ -134,7 +133,7 @@ class lstm(object):
         indices = []
         for index in xrange(int(num_batches)):
             start_time = time.time()
-            loss,true_count,indices,summaries = self.run_batch(data_filename,indices,isTraining,session)
+            loss,true_count,indices,summaries,output = self.run_batch(data_filename,indices,isTraining,session)
             dur = time.time() - start_time
 
             self.iterations += 1
@@ -143,13 +142,15 @@ class lstm(object):
             else:
                 self.test_writer.add_summary(summaries,self.iterations)
             if self.iterations % 100 == 0:
-                self.saver.save(session, os.path.join('nn_snapshots/', 'lstm'), global_step=self.iterations)
+                print output
+                self.saver.save(session, os.path.join('nn_snapshots/', 'lstm-v5'), global_step=self.iterations)
 
-            total_count += true_count.sum()
+            print true_count
+            total_count += np.sum(true_count)
             acc = total_count/float((index+1) * self.batch_size)
             #print acc
             if verbose:
-                print "batch " + str(index+1) + "/" + str(num_batches) + "\tbatch loss: " + str(loss) + "\t batch acc: " + str(float(true_count.sum())/self.batch_size) + "\t dur:" + str(dur)
+                print "batch " + str(index+1) + "/" + str(num_batches) + "\tbatch loss: " + str(loss) + "\t batch acc: " + str(float(np.sum(true_count))/self.batch_size) + "\t dur:" + str(dur)
             losses.append(loss)
 
         return np.mean(losses),acc
@@ -165,7 +166,7 @@ class lstm(object):
         else:
             loss, true_count, output,summaries = session.run([self.loss, self.eval_correct, self.output,self.merged], feed_dict=feed)
 
-        return loss,true_count,indices,summaries
+        return loss,true_count,indices,summaries,output
 
     def pred(self,session,data_filename,model_filename):
         """Gets the loss, acc of a loaded model, where model_filename is the relative path

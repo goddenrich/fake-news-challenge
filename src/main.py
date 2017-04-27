@@ -68,31 +68,50 @@ def train(params, bf='../dataset/train_bodies.csv', sf='../dataset/train_stances
     model.save('/trained/model')
 
 def test_train():
-    params={'batch_size':40,
+    exp1={'batch_size':100,
             'learning_rate': .01,
-            'l2': 1e-4,
+            'l2': 1e-3,
             'data_dim': 300}
 
-    train_filename = "temp.txt" #temp is the output of running augment_synonyms.py
+    exp2={'batch_size':100,
+            'learning_rate': .001,
+            'l2': 1e-3,
+            'data_dim': 300}
 
+    exp3={'batch_size':100,
+            'learning_rate': .01,
+            'l2': 1e-1,
+            'data_dim': 300}
 
-    with tf.Session() as sess:
-        model = lstm.lstm(params,sess)
-        init = tf.global_variables_initializer()
-        sess.run(init)
-        model.train(train_filename,None,None,1,sess,False)
+    exp4={'batch_size':100,
+            'learning_rate': .001,
+            'l2': 1e-1,
+            'data_dim': 300}
+
+    experiments = [exp1,exp2,exp3,exp4]
+
+    train_filename = "train.csv" #temp is the output of running augment_synonyms.py
+    for params in experiments:
+        print "----------------------learning rate:" + str(params['learning_rate']) + "-----------------"
+        with tf.Graph().as_default():
+
+            with tf.Session() as sess:
+                model = lstm.lstm(params,sess)
+                init = tf.global_variables_initializer()
+                sess.run(init)
+                model.train(train_filename,None,None,1,sess,False)
 
     return 
 
 def test_pred():
-    params={'batch_size':40,
+    params={'batch_size':200,
         'learning_rate': .01,
         'l2': 1e-4,
         'data_dim': 300}
     data_filename = "temp.txt" #temp is the output of running augment_synonyms.py
-    model_filename = "nn_snapshots/lstm-10"
+    model_filename = "nn_snapshots/"
     with tf.Session() as sess:
-            model = lstm.lstm(params,sess)
+            model = bicond_ga_lstm.bicond_ga_lstm(params,sess)
             init = tf.global_variables_initializer()
             sess.run(init)
             model.pred(sess,data_filename,model_filename)
