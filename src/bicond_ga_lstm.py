@@ -49,10 +49,10 @@ class bicond_ga_lstm(object):
         print "building model"
         with tf.device('/gpu:0'):
             self.headline_placeholder = tf.placeholder(tf.float32, shape=(None, self.headline_truncate_len, self.data_dim))
-            self.head_len_placeholder = tf.placeholder(tf.float32, shape=(self.batch_size,))
+            self.head_len_placeholder = tf.placeholder(tf.int32, shape=(self.batch_size,))
 
             self.body_placeholder = tf.placeholder(tf.float32, shape=(None, self.body_truncate_len, self.data_dim))
-            self.body_len_placeholder = tf.placeholder(tf.float32, shape=(self.batch_size,))
+            self.body_len_placeholder = tf.placeholder(tf.int32, shape=(self.batch_size,))
 
             self.label_placeholder = tf.placeholder(tf.int64, shape=(self.batch_size,))
 
@@ -90,7 +90,7 @@ class bicond_ga_lstm(object):
                 block_Wx = tf.multiply(Wx,tf.constant(1.0,shape=[self.batch_size,self.lstm_units*2,self.lstm_units*2]))
                 block_Wa = tf.multiply(Wa,tf.constant(1.0,shape=[self.batch_size,1,self.lstm_units*2]))
 
-                # Adapted from: https://github.com/aymericdamien/TensorFlow-Examples/blob/master/examples/3_NeuralNetworks/dynamic_rnn.py
+                #### RNN indexing code adapted from: https://github.com/aymericdamien/TensorFlow-Examples/blob/master/examples/3_NeuralNetworks/dynamic_rnn.py
                 body_outputs = tf.stack(b_bidi_outputs)
                 body_outputs = tf.transpose(body_outputs, [1, 0, 2])
 
@@ -99,19 +99,20 @@ class bicond_ga_lstm(object):
                 index = tf.range(0, self.batch_size) * self.body_truncate_len + (self.body_len_placeholder - 1)
                 # Indexing
                 body_outputs = tf.gather(tf.reshape(body_outputs, [-1, self.lstm_units*2]), index)
-                
+                #### End of adoption
+
                 #repeat-stack column-wise HN
                 e = tf.constant(1.0,shape=[self.headline_truncate_len,self.batch_size,self.lstm_units*2])
                 block_HN = tf.transpose(tf.multiply(body_outputs,e),[1,2,0]) #(batchsize,lstm*2,length)
 
-                block_Y = tf.transpose(h_bidi_outputs,[1,2,0])
+                block_Y = tf.transpose(h_bidi_outputs,[1,2,0]) #(batchsize,lstm*2,length)
                 M_p1 = tf.matmul(block_Wy,block_Y)
                 M_p2 = tf.matmul(block_Wh,block_HN)
                 M = tf.tanh(M_p1+ M_p2) # (batch_size,lstm*2,length)
                 alpha = tf.nn.softmax(tf.matmul(block_Wa,M)) # (batch_size,1,lstm*2) x (batch_size,lstm*2,length) = batch_size,1,length)
 
                 r = tf.matmul(block_Y,tf.transpose(alpha,[0,2,1])) #(batch_size,lstm*2,1)
-                attention_output = tf.tanh(tf.matmul(block_Wp,r)+ tf.matmul(block_Wx,tf.reshape(b_bidi_outputs[-1],[-1,self.lstm_units*2,1])))
+                attention_output = tf.tanh(tf.matmul(block_Wp,r) + tf.matmul(block_Wx,tf.reshape(b_bidi_outputs[-1],[-1,self.lstm_units*2,1])))
                 attention_output = tf.reshape(attention_output,[self.batch_size,self.lstm_units*2])
 
                 logits = tf.matmul(attention_output,Wfinal) + bfinal
@@ -150,7 +151,7 @@ class bicond_ga_lstm(object):
 
     def train(self,train_filename,valid_filename,test_filename,num_epochs,sess,run_test=False):
         for epoch in xrange(num_epochs):
-            train_loss,acc,all_ids,predicted_labels,true_labels = self.run_epoch(train_filename,True,sess,verbose=True)
+            train_loss,acc,all_ids,predicted_labels,true_labels = self.run_epoch(train_filename,True,sess,verbose=False)
             # np.save('all_ids'+str(epoch),all_ids)
             # np.save('predicted_labels'+str(epoch),all_ids)
             # np.save('true_labels'+str(epoch),all_ids)
@@ -193,7 +194,7 @@ class bicond_ga_lstm(object):
                 self.test_writer.add_summary(summaries,self.iterations)
             if self.iterations % 100 == 0:
                 self.saver.save(session, os.path.join('nn_snapshots/', 'bicondv2'), global_step=self.iterations)
-            if self.iterations % data_len == 0:
+            if self.iterations + 1 % data_len == 0:
                 print output
                 self.saver.save(session, os.path.join('nn_snapshots/', 'bicondv2-epoch'+str(int(self.iterations/float(data_len)))))
 
